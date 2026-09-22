@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Relay Calc">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0A6C98">
+<title>Relay Test Calculator</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<style>
+  :root {
+    --bg: #EAF0F3;
+    --surface: #FFFFFF;
+    --ink: #0F2028;
+    --muted: #586C76;
+    --line: #CBD7DD;
+    --grid: #E1E9ED;
+    --curve: #0A6C98;
+    --curve-soft: #9DBBC9;
+    --fault: #C46A05;
+    --danger: #B3321F;
+    --focus: #0A6C98;
+    --on-accent: #FFFFFF;
+    --tile: #F1F6F8;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0B1519; --surface: #13232A; --ink: #E6EEF1; --muted: #8FA5AF;
+      --line: #27404A; --grid: #1B2F37; --curve: #4CC3F0; --curve-soft: #3B6577;
+      --fault: #FFB23E; --danger: #FF8E7A; --focus: #4CC3F0; --on-accent: #06212C; --tile: #0F1D23;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0B1519; --surface: #13232A; --ink: #E6EEF1; --muted: #8FA5AF;
+    --line: #27404A; --grid: #1B2F37; --curve: #4CC3F0; --curve-soft: #3B6577;
+    --fault: #FFB23E; --danger: #FF8E7A; --focus: #4CC3F0; --on-accent: #06212C; --tile: #0F1D23;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+  }
+  main { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+  header h1 { font-size: 22px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 14px; }
+
+  /* Result */
+  .result-label { font-size: 14px; color: var(--muted); margin: 0; }
+  .result-value { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 0; }
+  .result-value .num { font-size: 52px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+  .result-value .unit { font-size: 20px; color: var(--muted); font-weight: 500; }
+  .result-value.bad .num { font-size: 34px; color: var(--danger); }
+  .result-note { margin: 4px 0 12px; color: var(--muted); font-size: 14px; min-height: 1.4em; }
+  .result-note strong { color: var(--fault); font-weight: 600; }
+
+  /* Fault multiple chips */
+  .lbl { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+  .chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .chip {
+    font: inherit; font-size: 15px; font-weight: 500; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    min-height: 44px; padding: 0 2px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--curve); border-color: var(--curve); color: var(--on-accent); }
+  .other-row { display: none; margin-top: 8px; }
+  .other-row.show { display: block; }
+
+  /* Tiles */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 12px; }
+  .tile { background: var(--tile); border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 9px; min-width: 0; }
+  .tile.key { border-color: var(--curve); }
+  .t-lbl { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.25; }
+  .t-val { display: block; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin-top: 3px; overflow-wrap: anywhere; }
+  .t-val small { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
+  .tile.key .t-val { color: var(--curve); }
+  .t-sub { display: block; font-size: 12px; color: var(--muted); }
+
+  /* Chart */
+  #chart { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+  .hint { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+
+  /* Form */
+  .field { display: block; margin-bottom: 14px; }
+  .field > .lbl { margin-bottom: 5px; }
+  .control {
+    width: 100%; font: inherit; font-size: 17px; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; min-height: 46px;
+    appearance: none; -webkit-appearance: none;
+  }
+  select.control {
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23788C96' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 13px center;
+  }
+  .control:focus-visible, .chip:focus-visible, .seg button:focus-visible, .check input:focus-visible, tr.pt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .with-unit { position: relative; }
+  .with-unit .control { padding-right: 38px; }
+  .with-unit .u { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 15px; pointer-events: none; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); min-height: 46px; }
+  .seg button { font: inherit; font-size: 17px; font-weight: 500; color: var(--ink); background: transparent; border: 0; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--curve); color: var(--on-accent); }
+  .ratio { margin: -2px 0 0; padding: 10px 12px; background: var(--tile); border: 1px solid var(--line); border-radius: 10px; font-size: 15px; }
+  .ratio strong { font-size: 18px; font-weight: 600; }
+  .ratio span { color: var(--muted); }
+  .fhint { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+  .group + .group { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .check { display: none; align-items: center; gap: 10px; margin: -4px 0 0; font-size: 14px; color: var(--muted); }
+  .check.show { display: flex; }
+  .check input { width: 20px; height: 20px; accent-color: var(--curve); margin: 0; }
+
+  /* Test points table */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { font-size: 12.5px; font-weight: 500; color: var(--muted); text-align: right; padding: 0 6px 6px; vertical-align: bottom; line-height: 1.25; }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: 10px 6px; border-top: 1px solid var(--line); }
+  tr.pt { cursor: pointer; }
+  tr.pt.sel td { background: var(--tile); font-weight: 600; }
+  tr.pt.sel td:first-child { box-shadow: inset 3px 0 0 var(--curve); }
+  td.nt { color: var(--danger); }
+
+  /* Formula */
+  .eq { font-size: 16px; margin: 0 0 4px; overflow-x: auto; white-space: nowrap; }
+  .consts { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+  .steps { margin: 0; padding: 0; list-style: none; font-size: 14.5px; }
+  .steps li { padding: 7px 0; border-top: 1px solid var(--line); }
+  .steps li span { color: var(--muted); }
+  .foot { margin: 16px 2px 0; font-size: 12.5px; color: var(--muted); }
+
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Relay test calculator</h1>
+    <p>IDMT overcurrent trip time and secondary injection current. Works offline.</p>
+  </header>
+
+  <!-- Results -->
+  <section class="card" aria-live="polite">
+    <p class="result-label">Trip time</p>
+    <p class="result-value" id="resVal"><span class="num" id="resNum">–</span><span class="unit" id="resUnit">s</span></p>
+    <p class="result-note" id="resNote"></p>
+
+    <span class="lbl" id="multLbl">Fault injection, multiples of I&gt;</span>
+    <div class="chips" id="chips" role="group" aria-labelledby="multLbl"></div>
+    <div class="other-row" id="otherRow">
+      <div class="with-unit"><input class="control" id="mult" type="text" inputmode="decimal" autocomplete="off" aria-label="Custom multiple of I&gt;"><span class="u">×</span></div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><span class="t-lbl">Nominal current</span><span class="t-val" id="vNom">–</span><span class="t-sub">primary</span></div>
+      <div class="tile"><span class="t-lbl">Fault current</span><span class="t-val" id="vFault">–</span><span class="t-sub">primary</span></div>
+      <div class="tile key"><span class="t-lbl">Inject current</span><span class="t-val" id="vInj">–</span><span class="t-sub">secondary</span></div>
+    </div>
+
+    <svg id="chart" viewBox="0 0 360 250" role="img" aria-label="Trip time versus fault current on log-log axes"></svg>
+    <p class="hint">Drag across the chart to change the multiple.</p>
+  </section>
+
+  <!-- Settings -->
+  <section class="card">
+    <div class="group">
+      <h2>Current transformer</h2>
+      <div class="row">
+        <label class="field">
+          <span class="lbl">Primary current</span>
+          <div class="with-unit"><input class="control" id="ctp" type="text" inputmode="decimal" autocomplete="off"><span class="u">A</span></div>
+        </label>
+        <div class="field">
+          <span class="lbl" id="ctsLbl">Secondary current</span>
+          <div class="seg" id="cts" role="group" aria-labelledby="ctsLbl">
+            <button type="button" data-s="1" aria-pressed="false">1 A</button>
+            <button type="button" data-s="5" aria-pressed="false">5 A</button>
+          </div>
+        </div>
+      </div>
+      <p class="ratio" id="ratio"></p>
+    </div>
+
+    <div class="group">
+      <h2>Relay settings</h2>
+      <label class="field">
+        <span class="lbl">Pickup setting, I&gt;</span>
+        <div class="with-unit"><input class="control" id="iset" type="text" inputmode="decimal" autocomplete="off" style="padding-right:56px"><span class="u">× In</span></div>
+        <p class="fhint" id="isetHint"></p>
+      </label>
+      <label class="field">
+        <span class="lbl">Trip curve</span>
+        <select class="control" id="curve"></select>
+      </label>
+      <label class="field" style="margin-bottom:12px">
+        <span class="lbl" id="tmsLbl">Time multiplier setting (TMS)</span>
+        <input class="control" id="tms" type="text" inputmode="decimal" autocomplete="off">
+      </label>
+      <label class="check" id="tdmRow"><input type="checkbox" id="tdm"><span>My relay uses a time dial multiplier (TDM). TD = 7 × TDM.</span></label>
+    </div>
+  </section>
+
+  <!-- Test points -->
+  <section class="card">
+    <h2>Test points</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Multiple</th><th>Inject<br>(A sec)</th><th>Fault<br>(A pri)</th><th>Trip<br>(s)</th></tr></thead>
+        <tbody id="points"></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:8px">Tap a row to use it.</p>
+  </section>
+
+  <!-- Working -->
+  <section class="card">
+    <h2>Working</h2>
+    <ul class="steps" id="steps" style="border-bottom:0"></ul>
+    <h2 style="margin-top:14px">Trip equation</h2>
+    <p class="eq" id="eq"></p>
+    <p class="consts" id="consts" style="margin:0"></p>
+  </section>
+
+  <p class="foot">Calculation aid only. Confirm settings against your relay manufacturer's manual and your protection study.</p>
+</main>
+
+<script>
+(function () {
+  // ---- Curve definitions (IEC 60255 and IEEE C37.112-1996) ----
+  var CURVES = [
+    { id: 'iec-a', std: 'IEC',  name: 'IEC A: Standard inverse',   k: 0.14, a: 0.02 },
+    { id: 'iec-b', std: 'IEC',  name: 'IEC B: Very inverse',       k: 13.5, a: 1 },
+    { id: 'iec-c', std: 'IEC',  name: 'IEC C: Extremely inverse',  k: 80,   a: 2 },
+    { id: 'iec-l', std: 'IEC',  name: 'IEC long time inverse',     k: 120,  a: 1 },
+    { id: 'ieee-m', std: 'IEEE', name: 'IEEE moderately inverse',  A: 0.0515, B: 0.114,  p: 0.02 },
+    { id: 'ieee-v', std: 'IEEE', name: 'IEEE very inverse',        A: 19.61,  B: 0.491,  p: 2 },
+    { id: 'ieee-e', std: 'IEEE', name: 'IEEE extremely inverse',   A: 28.2,   B: 0.1217, p: 2 }
+  ];
+  var PRESETS = [1.3, 2, 4, 5, 10];
+
+  function tripTime(c, m, mult) {
+    if (!(m > 1)) return null;
+    var t;
+    if (c.std === 'IEC') t = mult * c.k / (Math.pow(m, c.a) - 1);
+    else t = mult * (c.A / (Math.pow(m, c.p) - 1) + c.B);
+    return isFinite(t) && t > 0 ? t : null;
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var elCurve = $('curve'), elCtp = $('ctp'), elIset = $('iset'), elTms = $('tms'), elMult = $('mult');
+  var elTdm = $('tdm'), elTdmRow = $('tdmRow'), elTmsLbl = $('tmsLbl');
+  var elNum = $('resNum'), elUnit = $('resUnit'), elVal = $('resVal'), elNote = $('resNote');
+  var svg = $('chart');
+
+  // ---- Curve picker ----
+  var groups = { IEC: 'IEC 60255', IEEE: 'IEEE C37.112-1996' };
+  Object.keys(groups).forEach(function (std) {
+    var og = document.createElement('optgroup');
+    og.label = groups[std];
+    CURVES.filter(function (c) { return c.std === std; }).forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name; og.appendChild(o);
+    });
+    elCurve.appendChild(og);
+  });
+
+  // ---- Fault multiple chips ----
+  var chipEls = [];
+  var chipsBox = $('chips');
+  PRESETS.forEach(function (p) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = p + '×';
+    b.addEventListener('click', function () { state.other = false; state.mult = String(p); persist(); render(false); });
+    chipsBox.appendChild(b); chipEls.push({ el: b, v: p });
+  });
+  var otherChip = document.createElement('button');
+  otherChip.type = 'button'; otherChip.className = 'chip'; otherChip.textContent = 'Other';
+  otherChip.addEventListener('click', function () {
+    state.other = true; persist(); render(false);
+    try { elMult.focus(); elMult.select(); } catch (e) {}
+  });
+  chipsBox.appendChild(otherChip);
+
+  // ---- CT secondary buttons ----
+  var ctsBtns = Array.prototype.slice.call($('cts').querySelectorAll('button'));
+  ctsBtns.forEach(function (b) {
+    b.addEventListener('click', function () { state.cts = b.getAttribute('data-s'); persist(); render(true); });
+  });
+
+  // ---- State, kept on this device ----
+  var state = { ctp: '100', cts: '1', iset: '0.5', curve: 'iec-a', tms: '0.5', tdm: false, mult: '4', other: false };
+  try {
+    var saved = JSON.parse(localStorage.getItem('relay-calc-v2') || 'null');
+    if (saved && typeof saved === 'object') Object.keys(state).forEach(function (k) { if (k in saved) state[k] = saved[k]; });
+  } catch (e) {}
+  function persist() { try { localStorage.setItem('relay-calc-v2', JSON.stringify(state)); } catch (e) {} }
+
+  function getCurve() { return CURVES.filter(function (c) { return c.id === state.curve; })[0] || CURVES[0]; }
+  function num(s) { var v = parseFloat(String(s).replace(',', '.')); return isFinite(v) ? v : NaN; }
+  function fmtTime(t) { return t >= 100 ? t.toFixed(1) : t >= 10 ? t.toFixed(2) : t.toFixed(3); }
+  function fmtA(v) { return isFinite(v) ? v.toLocaleString('en-US', { maximumSignificantDigits: 4 }) : '–'; }
+  function sig(v) { return String(Number(v.toPrecision(4))); }
+
+  // ---- Chart ----
+  var W = 360, H = 250, ML = 46, MR = 12, MT = 10, MB = 34;
+  var PW = W - ML - MR, PH = H - MT - MB;
+  var NS = 'http://www.w3.org/2000/svg';
+  var geom = null;
+
+  function el(name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function label(v) { return v >= 1 ? String(v) : String(Number(v.toPrecision(1))); }
+
+  function draw(multEff, m, t, valid) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var c = getCurve();
+
+    var xMin = 1.1, xMax = 100;
+    if (m && m > 100) xMax = Math.pow(10, Math.ceil(Math.log10(m)));
+    var lx0 = Math.log10(xMin), lx1 = Math.log10(xMax);
+
+    function samples(cv) {
+      var pts = [];
+      for (var i = 0; i <= 140; i++) {
+        var mm = Math.pow(10, lx0 + (lx1 - lx0) * i / 140);
+        var tt = tripTime(cv, mm, multEff);
+        if (tt) pts.push([mm, tt]);
+      }
+      return pts;
+    }
+    var selPts = samples(c);
+    if (!selPts.length) return;
+
+    var lo = Infinity, hi = -Infinity;
+    selPts.forEach(function (p) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); });
+    if (valid) { lo = Math.min(lo, t); hi = Math.max(hi, t); }
+    var ly0 = Math.floor(Math.log10(lo) - 0.05), ly1 = Math.ceil(Math.log10(hi) + 0.05);
+    if (ly1 - ly0 < 2) ly1 = ly0 + 2;
+
+    function X(mm) { return ML + (Math.log10(mm) - lx0) / (lx1 - lx0) * PW; }
+    function Y(tt) { return MT + (1 - (Math.log10(tt) - ly0) / (ly1 - ly0)) * PH; }
+    geom = { lx0: lx0, lx1: lx1 };
+
+    var clip = el('clipPath', { id: 'plot' });
+    clip.appendChild(el('rect', { x: ML, y: MT, width: PW, height: PH }));
+    svg.appendChild(el('defs', {})).appendChild(clip);
+
+    for (var d = ly0; d <= ly1; d++) {
+      for (var f = 1; f < 10; f++) {
+        var v = f * Math.pow(10, d), lv = Math.log10(v);
+        if (lv < ly0 || lv > ly1) continue;
+        var yy = Y(v);
+        svg.appendChild(el('line', { x1: ML, x2: ML + PW, y1: yy, y2: yy, stroke: f === 1 ? 'var(--line)' : 'var(--grid)', 'stroke-width': f === 1 ? 1 : 0.7 }));
+        if (f === 1) svg.appendChild(el('text', { x: ML - 6, y: yy + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' }, label(v)));
+      }
+    }
+    for (var e = Math.floor(lx0); e <= Math.ceil(lx1); e++) {
+      [1, 2, 5].forEach(function (f) {
+        var v = f * Math.pow(10, e);
+        if (v < xMin || v > xMax) return;
+        var xx = X(v);
+        svg.appendChild(el('line', { x1: xx, x2: xx, y1: MT, y2: MT + PH, stroke: f === 1 ? 'var(--line)' : 'var(--grid)', 'stroke-width': f === 1 ? 1 : 0.7 }));
+        svg.appendChild(el('text', { x: xx, y: MT + PH + 15, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, String(v)));
+      });
+    }
+    svg.appendChild(el('rect', { x: ML, y: MT, width: PW, height: PH, fill: 'none', stroke: 'var(--line)' }));
+    svg.appendChild(el('text', { x: ML + PW / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 11.5, fill: 'var(--muted)' }, 'Fault current, multiples of pickup (I / I>)'));
+    svg.appendChild(el('text', { transform: 'translate(11,' + (MT + PH / 2) + ') rotate(-90)', 'text-anchor': 'middle', 'font-size': 11.5, fill: 'var(--muted)' }, 'Trip time (s)'));
+
+    var g = el('g', { 'clip-path': 'url(#plot)', fill: 'none', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    CURVES.filter(function (o) { return o.std === c.std && o.id !== c.id; }).forEach(function (o) {
+      var pts = samples(o).map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1); });
+      if (pts.length) g.appendChild(el('polyline', { points: pts.join(' '), stroke: 'var(--curve-soft)', 'stroke-width': 1.3, opacity: 0.7 }));
+    });
+    g.appendChild(el('polyline', { points: selPts.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1); }).join(' '), stroke: 'var(--curve)', 'stroke-width': 2.6 }));
+    svg.appendChild(g);
+
+    // test points on the selected curve
+    PRESETS.forEach(function (p) {
+      var tt = tripTime(c, p, multEff);
+      if (!tt || p < xMin || p > xMax) return;
+      svg.appendChild(el('circle', { cx: X(p), cy: Y(tt), r: 3.4, fill: 'var(--surface)', stroke: 'var(--curve)', 'stroke-width': 1.8 }));
+    });
+
+    if (valid && m > 1) {
+      var mx = Math.min(Math.max(m, xMin), xMax), px = X(mx), py = Y(t);
+      var dash = { stroke: 'var(--fault)', 'stroke-width': 1.3, 'stroke-dasharray': '4 3' };
+      svg.appendChild(el('line', Object.assign({ x1: px, x2: px, y1: py, y2: MT + PH }, dash)));
+      svg.appendChild(el('line', Object.assign({ x1: ML, x2: px, y1: py, y2: py }, dash)));
+      svg.appendChild(el('circle', { cx: px, cy: py, r: 7, fill: 'var(--surface)', stroke: 'var(--fault)', 'stroke-width': 2.6 }));
+      svg.appendChild(el('circle', { cx: px, cy: py, r: 2.6, fill: 'var(--fault)' }));
+    }
+  }
+
+  // ---- Render ----
+  function render(setInputs) {
+    var c = getCurve();
+    var isIeee = c.std === 'IEEE';
+
+    if (document.activeElement !== elCtp) elCtp.value = state.ctp;
+    if (document.activeElement !== elIset) elIset.value = state.iset;
+    if (document.activeElement !== elTms) elTms.value = state.tms;
+    if (document.activeElement !== elMult) elMult.value = state.mult;
+    elCurve.value = state.curve;
+    elTdm.checked = !!state.tdm;
+
+    var P = num(state.ctp), S = num(state.cts), Iset = num(state.iset), m = num(state.mult), tms = num(state.tms);
+    var multEff = isIeee && state.tdm ? tms * 7 : tms;
+
+    // CT buttons
+    ctsBtns.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-s') === String(state.cts) ? 'true' : 'false'); });
+
+    // Multiple chips
+    var isPreset = PRESETS.indexOf(m) !== -1;
+    var showOther = state.other || !isPreset;
+    chipEls.forEach(function (ch) { ch.el.setAttribute('aria-pressed', !showOther && ch.v === m ? 'true' : 'false'); });
+    otherChip.setAttribute('aria-pressed', showOther ? 'true' : 'false');
+    $('otherRow').classList.toggle('show', showOther);
+
+    // TMS / TD label
+    elTdmRow.classList.toggle('show', isIeee);
+    elTmsLbl.textContent = isIeee ? (state.tdm ? 'Time dial multiplier (TDM)' : 'Time dial (TD)') : 'Time multiplier setting (TMS)';
+
+    // CT ratio
+    var ctOk = P > 0 && S > 0;
+    var ratioEl = $('ratio');
+    if (ctOk) {
+      ratioEl.innerHTML = 'CT ratio <strong>' + sig(P / S) + ' : 1</strong> <span>(' + sig(P) + ' A / ' + sig(S) + ' A)</span>';
+    } else {
+      ratioEl.innerHTML = '<span>Enter the CT primary current to get the ratio.</span>';
+    }
+    $('isetHint').textContent = (Iset > 0 && ctOk)
+      ? 'Multiple of the CT rated current. Pickup is ' + fmtA(Iset * S) + ' A on the secondary and ' + fmtA(Iset * P) + ' A on the primary.'
+      : 'Multiple of the CT rated current (In), for example 0.5 In.';
+
+    // Core calculations (same as the Excel sheet)
+    var setOk = ctOk && Iset > 0;
+    var nominal = setOk ? Iset * P : NaN;                      // primary current at I> (I> x primary In)
+    var fault = setOk && m > 0 ? nominal * m : NaN;            // primary fault current
+    var inject = setOk && m > 0 ? Iset * S * m : NaN;          // secondary injection = I> x secondary In x multiple
+    var allOk = setOk && m > 0 && tms > 0;
+    var t = allOk ? tripTime(c, m, multEff) : null;
+
+    $('vNom').innerHTML = setOk ? fmtA(nominal) + '<small>A</small>' : '–';
+    $('vFault').innerHTML = isFinite(fault) ? fmtA(fault) + '<small>A</small>' : '–';
+    $('vInj').innerHTML = isFinite(inject) ? fmtA(inject) + '<small>A</small>' : '–';
+
+    elVal.classList.remove('bad');
+    if (!allOk) {
+      elNum.textContent = '–'; elUnit.textContent = '';
+      elNote.textContent = 'Enter CT primary, I>, multiple and TMS above zero.';
+    } else if (!t) {
+      elVal.classList.add('bad');
+      elNum.textContent = 'No trip'; elUnit.textContent = '';
+      elNote.textContent = 'The multiple must be above 1 × I> for the relay to operate.';
+    } else {
+      elNum.textContent = fmtTime(t); elUnit.textContent = 's';
+      elNote.innerHTML = 'At <strong>' + sig(m) + ' × I&gt;</strong>, injecting ' + fmtA(inject) + ' A on the secondary.';
+    }
+
+    // Test points table
+    var tb = $('points');
+    while (tb.firstChild) tb.removeChild(tb.firstChild);
+    PRESETS.forEach(function (p) {
+      var tr = document.createElement('tr');
+      tr.className = 'pt' + (p === m ? ' sel' : '');
+      tr.tabIndex = 0;
+      var tt = (setOk && tms > 0) ? tripTime(c, p, multEff) : null;
+      var cells = [p + '×', setOk ? fmtA(Iset * S * p) : '–', setOk ? fmtA(nominal * p) : '–', tt ? fmtTime(tt) : 'No trip'];
+      cells.forEach(function (txt, i) {
+        var td = document.createElement('td'); td.textContent = txt;
+        if (i === 3 && !tt) td.className = 'nt';
+        tr.appendChild(td);
+      });
+      var pick = function () { state.other = false; state.mult = String(p); persist(); render(false); };
+      tr.addEventListener('click', pick);
+      tr.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } });
+      tb.appendChild(tr);
+    });
+
+    // Working steps and equation
+    var steps = $('steps');
+    while (steps.firstChild) steps.removeChild(steps.firstChild);
+    if (setOk) {
+      [
+        ['Nominal current', sig(Iset) + ' × ' + sig(P) + ' A (CT primary) = ' + fmtA(nominal) + ' A primary'],
+        ['Fault current', fmtA(nominal) + ' × ' + sig(m) + ' = ' + fmtA(fault) + ' A primary'],
+        ['Inject current', sig(Iset) + ' × ' + sig(S) + ' A (CT secondary) × ' + sig(m) + ' = ' + fmtA(inject) + ' A secondary']
+      ].forEach(function (r) {
+        var li = document.createElement('li');
+        li.innerHTML = '<span>' + r[0] + ':</span> ' + r[1];
+        steps.appendChild(li);
+      });
+    }
+    if (isIeee) {
+      $('eq').textContent = 't = TD × ( A / ((I/I>)^p − 1) + B )';
+      $('consts').textContent = 'A = ' + c.A + ', B = ' + c.B + ', p = ' + c.p;
+    } else {
+      $('eq').textContent = 't = TMS × k / ((I/I>)^α − 1)';
+      $('consts').textContent = 'k = ' + c.k + ', α = ' + c.a;
+    }
+
+    draw(multEff > 0 ? multEff : 1, allOk ? m : null, t, !!t);
+  }
+
+  // ---- Events ----
+  function bind(input, key) {
+    input.addEventListener('input', function () { state[key] = input.value; persist(); render(true); });
+  }
+  bind(elCtp, 'ctp'); bind(elIset, 'iset'); bind(elTms, 'tms'); bind(elMult, 'mult');
+  elCurve.addEventListener('change', function () { state.curve = elCurve.value; persist(); render(true); });
+  elTdm.addEventListener('change', function () { state.tdm = elTdm.checked; persist(); render(true); });
+
+  // Drag on the chart to change the multiple (snaps to the preset values)
+  var dragging = false;
+  function setFromPointer(ev) {
+    if (!geom) return;
+    var r = svg.getBoundingClientRect();
+    var x = (ev.clientX - r.left) / r.width * W;
+    var frac = Math.min(1, Math.max(0, (x - ML) / PW));
+    var m = Math.pow(10, geom.lx0 + frac * (geom.lx1 - geom.lx0));
+    var snapped = null;
+    PRESETS.forEach(function (p) { if (Math.abs(Math.log(m / p)) < 0.04) snapped = p; });
+    if (snapped) { state.mult = String(snapped); state.other = false; }
+    else { state.mult = String(Number(m.toPrecision(3))); state.other = true; }
+    elMult.value = state.mult;
+    persist(); render(true);
+  }
+  svg.addEventListener('pointerdown', function (ev) { dragging = true; try { svg.setPointerCapture(ev.pointerId); } catch (e) {} setFromPointer(ev); });
+  svg.addEventListener('pointermove', function (ev) { if (dragging) setFromPointer(ev); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { svg.addEventListener(n, function () { dragging = false; }); });
+
+  render(false);
+
+  // Offline support: the app saves itself after the first online visit
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>

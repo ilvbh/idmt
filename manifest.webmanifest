@@ -1,6 +1,6 @@
 {
   "name": "Relay Test Calculator",
-  "short_name": "Relay Calc",
+  "short_name": "IDMT Cal",
   "description": "Offline IDMT relay trip time and secondary injection calculator (IEC 60255 and IEEE C37.112-1996).",
   "start_url": "./index.html",
   "scope": "./",

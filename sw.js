@@ -1,6 +1,5 @@
-// Offline service worker: serves the saved copy instantly and refreshes it in the background
-// whenever there is a connection. Bump VERSION only if you want to force a clean re-download.
-const VERSION = 'relay-calc-v3';
+// Offline service worker: 
+const VERSION = 'relay-calc-v4';
 const FILES = [
   './',
   './index.html',
@@ -34,5 +33,7 @@ self.addEventListener('fetch', (e) => {
         return hit || network.then((res) => res || cache.match('./index.html'));
       })
     )
+  );
+});
   );
 });

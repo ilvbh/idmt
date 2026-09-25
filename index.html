@@ -230,25 +230,84 @@
 
 <script>
 (function () {
-  // ---- Curve definitions (IEC 60255 and IEEE C37.112-1996) ----
+  // ---- Curve definitions ----
   var CURVES = [
+    // IEC 60255
     { id: 'iec-a', std: 'IEC',  name: 'IEC A: Standard inverse',   k: 0.14, a: 0.02 },
     { id: 'iec-b', std: 'IEC',  name: 'IEC B: Very inverse',       k: 13.5, a: 1 },
     { id: 'iec-c', std: 'IEC',  name: 'IEC C: Extremely inverse',  k: 80,   a: 2 },
     { id: 'iec-l', std: 'IEC',  name: 'IEC long time inverse',     k: 120,  a: 1 },
+
+    // IEEE C37.112-1996
     { id: 'ieee-m', std: 'IEEE', name: 'IEEE moderately inverse',  A: 0.0515, B: 0.114,  p: 0.02 },
     { id: 'ieee-v', std: 'IEEE', name: 'IEEE very inverse',        A: 19.61,  B: 0.491,  p: 2 },
-    { id: 'ieee-e', std: 'IEEE', name: 'IEEE extremely inverse',   A: 28.2,   B: 0.1217, p: 2 }
+    { id: 'ieee-e', std: 'IEEE', name: 'IEEE extremely inverse',   A: 28.2,   B: 0.1217, p: 2 },
+
+    // GE MDP / BS142 (GEK-100682D)
+    { id: 'bs142-inv',  std: 'BS142', name: 'BS142 / 51 Inverse' },
+    { id: 'bs142-vinv', std: 'BS142', name: '53 Very Inverse' },
+    { id: 'bs142-einv', std: 'BS142', name: '77 Extremely Inverse' },
+    { id: 'bs142-linv', std: 'BS142', name: '66 Inverse Long Time' }
   ];
+
   var PRESETS = [1.3, 2, 4, 5, 10];
-  var MULT_MIN = 1.3;
+  var MULT_MIN = 1.1; // Supports MDP curve starting limit
   function clampMult(v) { return isFinite(v) && v > 0 ? Math.max(MULT_MIN, v) : v; }
 
-  function tripTime(c, m, mult) {
+  // Core trip time calculator
+  function tripTime(c, m, mult, secondaryRating) {
     if (!(m > 1)) return null;
-    var t;
-    if (c.std === 'IEC') t = mult * c.k / (Math.pow(m, c.a) - 1);
-    else t = mult * (c.A / (Math.pow(m, c.p) - 1) + c.B);
+    var t = null;
+
+    if (c.std === 'IEC') {
+      t = mult * c.k / (Math.pow(m, c.a) - 1);
+    } else if (c.std === 'IEEE') {
+      t = mult * (c.A / (Math.pow(m, c.p) - 1) + c.B);
+    } else if (c.std === 'BS142') {
+      // Time dial definition from manual:
+      // Time Dial = (Time Dial Setting / 10) for 5 A rated units; Time Dial = TMS for 1 A rated units
+      var td = (secondaryRating === 5) ? (mult / 10.0) : mult;
+
+      if (c.id === 'bs142-inv') {
+        if (secondaryRating === 1) {
+          // BS142 INVERSE (1 A) for 1 to 31x
+          if (m >= 1.0 && m <= 31.0) {
+            t = (0.14 / (Math.pow(m, 0.02) - 1)) * td + 0.018;
+          }
+        } else {
+          // 51 INVERSE (5 A)
+          if (m >= 1.1 && m < 4.0) {
+            t = (0.0059 / (Math.pow(m, 0.001) - 1) + 0.419) * td + 0.018;
+          } else if (m >= 4.0 && m <= 31.0) {
+            t = (0.0069 / (Math.pow(m, 0.001) - 1) - 0.252) * td + 0.018;
+          }
+        }
+      } else if (c.id === 'bs142-vinv') {
+        // 53 VERY INVERSE
+        if (m >= 1.1 && m < 4.0) {
+          t = (52.954 / (Math.pow(m, 2.11) - 1) + 0.923) * td + 0.018;
+        } else if (m >= 4.0 && m <= 31.0) {
+          t = (28.447 / (Math.pow(m, 1.702) - 1) + 1.007) * td + 0.018;
+        }
+      } else if (c.id === 'bs142-einv') {
+        // 77 EXTREMELY INVERSE (1.1 to 20x)
+        if (m >= 1.1 && m <= 20.0) {
+          t = (58.132 / (Math.pow(m, 2.135) - 1) + 0.166) * td + 0.020;
+        }
+      } else if (c.id === 'bs142-linv') {
+        // 66 INVERSE LONG TIME
+        if (m >= 1.1 && m < 3.0) {
+          t = (0.0006 / (Math.pow(m, 0.00001) - 1) + 5.644) * td;
+        } else if (m >= 3.0 && m < 5.0) {
+          t = (0.746 / (Math.pow(m, 0.01) - 1) - 5.630) * td;
+        } else if (m >= 5.0 && m < 20.0) {
+          t = (0.00085 / (Math.pow(m, 0.00001) - 1) - 12.530) * td;
+        } else if (m >= 20.0 && m <= 31.0) {
+          t = ((250.0 - 4.5 * m) / 10.0) * td;
+        }
+      }
+    }
+
     return isFinite(t) && t > 0 ? t : null;
   }
 
@@ -258,8 +317,12 @@
   var elNum = $('resNum'), elUnit = $('resUnit'), elVal = $('resVal'), elNote = $('resNote');
   var svg = $('chart');
 
-  // ---- Curve picker ----
-  var groups = { IEC: 'IEC 60255', IEEE: 'IEEE C37.112-1996' };
+  // ---- Populate curve picker with groups ----
+  var groups = { 
+    IEC: 'IEC 60255', 
+    IEEE: 'IEEE C37.112-1996',
+    BS142: 'GE MDP / BS142 Curves'
+  };
   Object.keys(groups).forEach(function (std) {
     var og = document.createElement('optgroup');
     og.label = groups[std];
@@ -293,7 +356,7 @@
     b.addEventListener('click', function () { state.cts = b.getAttribute('data-s'); persist(); render(true); });
   });
 
-  // ---- State, kept on this device ----
+  // ---- State management ----
   var state = { ctp: '100', cts: '1', iset: '0.5', curve: 'iec-a', tms: '0.5', tdm: false, mult: '4', other: false };
   try {
     var saved = JSON.parse(localStorage.getItem('relay-calc-v2') || 'null');
@@ -307,7 +370,7 @@
   function fmtA(v) { return isFinite(v) ? v.toLocaleString('en-US', { maximumSignificantDigits: 4 }) : '–'; }
   function sig(v) { return String(Number(v.toPrecision(4))); }
 
-  // ---- Chart ----
+  // ---- Chart Drawing ----
   var W = 360, H = 250, ML = 46, MR = 12, MT = 10, MB = 34;
   var PW = W - ML - MR, PH = H - MT - MB;
   var NS = 'http://www.w3.org/2000/svg';
@@ -321,19 +384,19 @@
   }
   function label(v) { return v >= 1 ? String(v) : String(Number(v.toPrecision(1))); }
 
-  function draw(multEff, m, t, valid) {
+  function draw(multEff, secRating, m, t, valid) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     var c = getCurve();
 
-    var xMin = 1.1, xMax = 100;
-    if (m && m > 100) xMax = Math.pow(10, Math.ceil(Math.log10(m)));
+    var xMin = 1.1, xMax = (c.std === 'BS142') ? 31 : 100;
+    if (m && m > xMax) xMax = Math.pow(10, Math.ceil(Math.log10(m)));
     var lx0 = Math.log10(xMin), lx1 = Math.log10(xMax);
 
     function samples(cv) {
       var pts = [];
       for (var i = 0; i <= 140; i++) {
         var mm = Math.pow(10, lx0 + (lx1 - lx0) * i / 140);
-        var tt = tripTime(cv, mm, multEff);
+        var tt = tripTime(cv, mm, multEff, secRating);
         if (tt) pts.push([mm, tt]);
       }
       return pts;
@@ -385,9 +448,8 @@
     g.appendChild(el('polyline', { points: selPts.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1); }).join(' '), stroke: 'var(--curve)', 'stroke-width': 2.6 }));
     svg.appendChild(g);
 
-    // test points on the selected curve
     PRESETS.forEach(function (p) {
-      var tt = tripTime(c, p, multEff);
+      var tt = tripTime(c, p, multEff, secRating);
       if (!tt || p < xMin || p > xMax) return;
       svg.appendChild(el('circle', { cx: X(p), cy: Y(tt), r: 3.4, fill: 'var(--surface)', stroke: 'var(--curve)', 'stroke-width': 1.8 }));
     });
@@ -402,7 +464,7 @@
     }
   }
 
-  // ---- Render ----
+  // ---- Render UI ----
   function render(setInputs) {
     var c = getCurve();
     var isIeee = c.std === 'IEEE';
@@ -429,7 +491,13 @@
 
     // TMS / TD label
     elTdmRow.classList.toggle('show', isIeee);
-    elTmsLbl.textContent = isIeee ? (state.tdm ? 'Time dial multiplier (TDM)' : 'Time dial (TD)') : 'Time multiplier setting (TMS)';
+    if (isIeee) {
+      elTmsLbl.textContent = state.tdm ? 'Time dial multiplier (TDM)' : 'Time dial (TD)';
+    } else if (c.std === 'BS142') {
+      elTmsLbl.textContent = 'Time Dial / TMS';
+    } else {
+      elTmsLbl.textContent = 'Time multiplier setting (TMS)';
+    }
 
     // CT ratio
     var ctOk = P > 0 && S > 0;
@@ -443,13 +511,13 @@
       ? 'Multiple of the CT rated current. Pickup is ' + fmtA(Iset * S) + ' A on the secondary and ' + fmtA(Iset * P) + ' A on the primary.'
       : 'Multiple of the CT rated current (In), for example 0.5 In.';
 
-    // Core calculations (same as the Excel sheet)
+    // Core calculations
     var setOk = ctOk && Iset > 0;
-    var nominal = setOk ? Iset * P : NaN;                      // primary current at I> (I> x primary In)
-    var fault = setOk && m > 0 ? nominal * m : NaN;            // primary fault current
-    var inject = setOk && m > 0 ? Iset * S * m : NaN;          // secondary injection = I> x secondary In x multiple
+    var nominal = setOk ? Iset * P : NaN;
+    var fault = setOk && m > 0 ? nominal * m : NaN;
+    var inject = setOk && m > 0 ? Iset * S * m : NaN;
     var allOk = setOk && m > 0 && tms > 0;
-    var t = allOk ? tripTime(c, m, multEff) : null;
+    var t = allOk ? tripTime(c, m, multEff, S) : null;
 
     $('vNom').innerHTML = setOk ? fmtA(nominal) + '<small>A</small>' : '–';
     $('vFault').innerHTML = isFinite(fault) ? fmtA(fault) + '<small>A</small>' : '–';
@@ -464,10 +532,10 @@
     } else if (!t) {
       elVal.classList.add('bad');
       elNum.textContent = 'No trip'; elUnit.textContent = '';
-      elNote.textContent = 'The multiple must be above 1 × I> for the relay to operate.';
+      elNote.textContent = 'Fault multiple is outside the operating range for this curve.';
     } else if (belowMin) {
       elNum.textContent = fmtTime(t); elUnit.textContent = 's';
-      elNote.innerHTML = 'Minimum test multiple is <strong>1.3 × I&gt;</strong>. Using 1.3×, injecting ' + fmtA(inject) + ' A on the secondary.';
+      elNote.innerHTML = 'Minimum test multiple is <strong>' + MULT_MIN + ' × I&gt;</strong>. Using ' + MULT_MIN + '×, injecting ' + fmtA(inject) + ' A on the secondary.';
     } else {
       elNum.textContent = fmtTime(t); elUnit.textContent = 's';
       elNote.innerHTML = 'At <strong>' + sig(m) + ' × I&gt;</strong>, injecting ' + fmtA(inject) + ' A on the secondary.';
@@ -480,7 +548,7 @@
       var tr = document.createElement('tr');
       tr.className = 'pt' + (p === m ? ' sel' : '');
       tr.tabIndex = 0;
-      var tt = (setOk && tms > 0) ? tripTime(c, p, multEff) : null;
+      var tt = (setOk && tms > 0) ? tripTime(c, p, multEff, S) : null;
       var cells = [p + '×', setOk ? fmtA(Iset * S * p) : '–', setOk ? fmtA(nominal * p) : '–', tt ? fmtTime(tt) : 'No trip'];
       cells.forEach(function (txt, i) {
         var td = document.createElement('td'); td.textContent = txt;
@@ -493,10 +561,10 @@
       tb.appendChild(tr);
     });
 
-    draw(multEff > 0 ? multEff : 1, allOk ? m : null, t, !!t);
+    draw(multEff > 0 ? multEff : 1, S, allOk ? m : null, t, !!t);
   }
 
-  // ---- Events ----
+  // ---- Event handlers ----
   function bind(input, key) {
     input.addEventListener('input', function () { state[key] = input.value; persist(); render(true); });
   }
@@ -510,7 +578,7 @@
   elCurve.addEventListener('change', function () { state.curve = elCurve.value; persist(); render(true); });
   elTdm.addEventListener('change', function () { state.tdm = elTdm.checked; persist(); render(true); });
 
-  // Drag on the chart to change the multiple (snaps to the preset values)
+  // Pointer interaction on chart
   var dragging = false;
   function setFromPointer(ev) {
     if (!geom) return;
@@ -532,7 +600,7 @@
 
   render(false);
 
-  // Offline support: the app saves itself after the first online visit
+  // Offline service worker registration
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function () {});

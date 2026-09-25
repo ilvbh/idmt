@@ -1,5 +1,5 @@
 // Offline service worker: 
-const VERSION = 'relay-calc-v4';
+const VERSION = 'relay-calc-v5';
 const FILES = [
   './',
   './index.html',
@@ -33,7 +33,5 @@ self.addEventListener('fetch', (e) => {
         return hit || network.then((res) => res || cache.match('./index.html'));
       })
     )
-  );
-});
   );
 });
